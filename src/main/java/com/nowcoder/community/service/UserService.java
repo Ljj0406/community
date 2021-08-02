@@ -1,6 +1,8 @@
 package com.nowcoder.community.service;
 
+import com.nowcoder.community.dao.LoginTicketMapper;
 import com.nowcoder.community.dao.UserMapper;
+import com.nowcoder.community.entity.LoginTicket;
 import com.nowcoder.community.entity.User;
 import com.nowcoder.community.util.CommuintyUtil;
 import com.nowcoder.community.util.CommunityConstant;
@@ -28,11 +30,16 @@ public class UserService implements CommunityConstant {
     @Autowired
     private TemplateEngine templateEngine;
 
+    @Autowired
+    private LoginTicketMapper ticketMapper;
+
     @Value("${community.path.domain}")
     private String domain;
 
     @Value("${server.servlet.context-path}")
     private String contextPath;
+
+
 
     public User findUserById(int id){
         return userMapper.selectById(id);
@@ -95,5 +102,49 @@ public class UserService implements CommunityConstant {
         }else {
             return ACTIVATION_FAILURE;
         }
+    }
+
+    public Map<String,Object> login(String username,String password,int expiredSeconds){
+        HashMap<String, Object> map = new HashMap<>();
+        //空值处理
+        if (StringUtils.isBlank(username)) {
+            map.put("usernameMsg","账号不能为空");
+            return map;
+        }
+        if (StringUtils.isBlank(password)){
+            map.put("passwordMsg","密码不能为空");
+            return map;
+        }
+        //验证账号
+        User user = userMapper.selectByName(username);
+        if (user == null){
+            map.put("usernameMsg","该账号不存在");
+            return map;
+        }
+        //验证状态
+        if (user.getStatus() == 0){
+            map.put("usernameMsg","该账号未激活");
+            return map;
+        }
+        //验证密码
+        password = CommuintyUtil.md5(password + user.getStatus());
+        if (user.getPassword().equals(password)){
+            map.put("passwordMsg","密码不正确");
+            return map;
+        }
+        //生成登录凭证
+        LoginTicket loginTicket = new LoginTicket();
+        loginTicket.setUserId(user.getId());
+        loginTicket.setTicket(CommuintyUtil.generateUUID());
+        loginTicket.setStatus(0);
+        loginTicket.setExpired(new Date(System.currentTimeMillis()+ expiredSeconds*1000 ));
+        ticketMapper.insertLoginTicket(loginTicket);
+
+        map.put("ticket",loginTicket.getTicket());
+        return map;
+    }
+
+    public void logout(String ticket){
+        ticketMapper.updateStatus(ticket,1);
     }
 }
